@@ -10,9 +10,9 @@ License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
 Shows the official Emilia-Romagna weather alert bulletin (CAP feed) for the alert zone of your municipality.
 
-SafeER is an independent third-party plugin by Maurizio Malagoli (malamaur). It is not affiliated with, endorsed by or developed by the Emilia-Romagna Region or the Allerta Meteo Emilia-Romagna service; it only displays the public data they publish.
-
 == Description ==
+
+SafeER is an independent third-party plugin by Maurizio Malagoli (malamaur). It is not affiliated with, endorsed by or developed by the Emilia-Romagna Region or the Allerta Meteo Emilia-Romagna service; it only displays the public data they publish.
 
 The plugin reads the CAP (Common Alerting Protocol) feed published by Allerta Meteo Emilia-Romagna
 (https://allertameteo.regione.emilia-romagna.it/o/xmlcap) and displays, for the selected alert zone:
