@@ -9,18 +9,31 @@ on:
       - "readme.txt"
       - ".wordpress-org/**"
 
+env:
+  SLUG: safeer-visualizzazione-allerte-emilia-romagna
+
 jobs:
   assets:
     name: Aggiorna readme e asset
-    # Salta il primo push del branch: la prima pubblicazione la fa il workflow di deploy.
-    if: github.event.before != '0000000000000000000000000000000000000000'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # Finché la prima versione non è pubblicata (trunk vuoto) non c'è nulla da aggiornare:
+      # la prima pubblicazione la fa il workflow "Deploy su WordPress.org".
+      - name: Controlla che il plugin sia già pubblicato
+        id: published
+        run: |
+          if curl -sfI "https://plugins.svn.wordpress.org/${SLUG}/trunk/readme.txt" > /dev/null; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Plugin non ancora pubblicato su wordpress.org: aggiornamento saltato."
+          fi
+      - uses: actions/checkout@v5
+        if: steps.published.outputs.ok == 'true'
       - name: Aggiorna su WordPress.org
+        if: steps.published.outputs.ok == 'true'
         uses: 10up/action-wordpress-plugin-asset-update@stable
         env:
           SVN_USERNAME: ${{ secrets.SVN_USERNAME }}
           SVN_PASSWORD: ${{ secrets.SVN_PASSWORD }}
-          SLUG: safeer-visualizzazione-allerte-emilia-romagna
           IGNORE_OTHER_FILES: true
