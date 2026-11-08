@@ -1,0 +1,26 @@
+# Aggiorna su wordpress.org solo readme.txt e immagini (.wordpress-org/) senza rilasciare una nuova versione.
+name: Aggiorna readme e immagini su WordPress.org
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "readme.txt"
+      - ".wordpress-org/**"
+
+jobs:
+  assets:
+    name: Aggiorna readme e asset
+    # Salta il primo push del branch: la prima pubblicazione la fa il workflow di deploy.
+    if: github.event.before != '0000000000000000000000000000000000000000'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Aggiorna su WordPress.org
+        uses: 10up/action-wordpress-plugin-asset-update@stable
+        env:
+          SVN_USERNAME: ${{ secrets.SVN_USERNAME }}
+          SVN_PASSWORD: ${{ secrets.SVN_PASSWORD }}
+          SLUG: safeer-visualizzazione-allerte-emilia-romagna
+          IGNORE_OTHER_FILES: true
