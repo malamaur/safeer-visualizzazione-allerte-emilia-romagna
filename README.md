@@ -4,6 +4,8 @@
 
 Plugin WordPress che mostra sul sito di un Comune il **documento di allertamento meteo-idrogeologico-idraulico** pubblicato ogni giorno dalla Regione Emilia-Romagna, per la zona di allerta scelta.
 
+Il plugin è stato sviluppato per gli enti dell'**Unione delle Terre d'Argine** (Unione e Comuni di Carpi, Campogalliano, Novi di Modena e Soliera), ma può essere usato da qualsiasi Comune o ente dell'Emilia-Romagna: basta scegliere la propria zona di allerta.
+
 - **wordpress.org:** https://wordpress.org/plugins/safeer-visualizzazione-allerte-emilia-romagna/
 - **Licenza:** GPLv2 o successiva
 - **Requisiti:** WordPress 5.8+, PHP 7.4+

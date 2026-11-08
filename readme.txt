@@ -12,6 +12,8 @@ Shows the official Emilia-Romagna weather alert bulletin (CAP feed) for the aler
 
 == Description ==
 
+SafeER was developed for the public bodies of the Unione delle Terre d'Argine (the Union and the municipalities of Carpi, Campogalliano, Novi di Modena and Soliera, in the province of Modena), and can be used by any municipality or organization in Emilia-Romagna by selecting its alert zone.
+
 SafeER is an independent third-party plugin by Maurizio Malagoli (malamaur). It is not affiliated with, endorsed by or developed by the Emilia-Romagna Region or the Allerta Meteo Emilia-Romagna service; it only displays the public data they publish.
 
 The plugin reads the CAP (Common Alerting Protocol) feed published by Allerta Meteo Emilia-Romagna
