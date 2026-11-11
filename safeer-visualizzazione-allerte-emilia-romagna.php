@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       SafeER Visualizzazione Allerte Emilia Romagna
  * Description:       Mostra il documento di allertamento pubblicato dalla Regione Emilia-Romagna (formato CAP) per la zona di allerta del Comune. Shortcode [allerta_meteo] e widget, grafica e parametri personalizzabili.
- * Version:           2.3.1
+ * Version:           2.3.2
  * Requires at least: 5.8
  * Requires PHP:      7.4
  * Author:            Maurizio Malagoli
@@ -17,9 +17,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 final class Allerta_Meteo_ER {
 
-	const VERSION  = '2.3.1';
+	const VERSION  = '2.3.2';
 	const ENDPOINT = 'https://allertameteo.regione.emilia-romagna.it/o/xmlcap';
 	const PORTAL   = 'https://allertameteo.regione.emilia-romagna.it/';
+	const BULLETINS       = 'https://allertameteo.regione.emilia-romagna.it/allerte-e-bollettini';
+	const STATUS_ENDPOINT = 'https://allertameteo.regione.emilia-romagna.it/o/get-stato-allerta';
+	const FEED_ENDPOINT   = 'https://allertameteo.regione.emilia-romagna.it/o/compila-allerta-portlet/feed?feed=allerte-bollettini';
 	const CAP_NS   = 'urn:oasis:names:tc:emergency:cap:1.2';
 	const OPTION   = 'amer_settings';
 	const TZ       = 'Europe/Rome';
@@ -96,6 +99,7 @@ final class Allerta_Meteo_ER {
 			'mostra_zona'   => 1,
 			'mostra_legenda'=> 1,
 			'mostra_link'   => 0,
+			'mostra_pdf'    => 1,
 			'nascondi_na'   => 1,
 			'livello_su'    => 'oggi',
 			'mostra_giorno' => 1,
@@ -203,6 +207,106 @@ final class Allerta_Meteo_ER {
 			update_option( 'amer_last_good', array_merge( $doc, array( 'version' => self::VERSION ) ), false );
 		}
 		return $doc;
+	}
+
+	/** GET con i parametri comuni; restituisce il corpo o WP_Error. */
+	private static function http_get( $url ) {
+		$response = wp_remote_get( $url, array(
+			'timeout'    => 15,
+			'user-agent' => 'WordPress/' . get_bloginfo( 'version' ) . '; ' . home_url() . ' (SafeER)',
+		) );
+		if ( is_wp_error( $response ) ) {
+			return $response;
+		}
+		if ( 200 !== (int) wp_remote_retrieve_response_code( $response ) ) {
+			return new WP_Error( 'amer_http', 'HTTP ' . wp_remote_retrieve_response_code( $response ) );
+		}
+		return (string) wp_remote_retrieve_body( $response );
+	}
+
+	/**
+	 * Link al PDF del documento emesso dalla Regione (allerta o bollettino di vigilanza).
+	 *
+	 * Il CAP non contiene il link, e l'indirizzo del PDF include un numero di cartella
+	 * che non si può ricavare. Lo cerco, nell'ordine, nel servizio "get-stato-allerta"
+	 * (campo "link") e nel feed ufficiale "Allerte e bollettini", accettando solo un PDF
+	 * con lo stesso numero del documento (es. allerta107_2026.pdf). Se non lo trovo
+	 * restituisco la pagina "Allerte e bollettini" del portale.
+	 *
+	 * @return array{url:string,pdf:bool}
+	 */
+	public static function pdf_link( $doc ) {
+		$fallback = array( 'url' => self::BULLETINS, 'pdf' => false );
+		if ( empty( $doc['identifier'] ) || ! preg_match( '#^0*(\d+)\s*/\s*(\d{4})$#', trim( $doc['identifier'] ), $m ) ) {
+			return $fallback;
+		}
+		$pattern = '#/(?:allerta|bollettino)0*' . $m[1] . '_' . $m[2] . '\.pdf$#i';
+		$key     = 'amer_pdf_' . md5( $doc['identifier'] . '|' . get_option( 'amer_cache_salt', 1 ) . '|' . self::VERSION );
+		$cached  = get_transient( $key );
+		if ( is_array( $cached ) ) {
+			return $cached;
+		}
+
+		$found = '';
+
+		// 1. get-stato-allerta: ora attuale e istante di emissione del documento.
+		$urls = array( self::STATUS_ENDPOINT );
+		if ( ! empty( $doc['sent'] ) ) {
+			$urls[] = self::STATUS_ENDPOINT . '?data=' . str_replace( ' ', '%20', wp_date( 'Y-m-d H:i', $doc['sent'] + 5 * MINUTE_IN_SECONDS, new DateTimeZone( self::TZ ) ) );
+		}
+		foreach ( $urls as $url ) {
+			$body = self::http_get( $url );
+			if ( is_wp_error( $body ) ) {
+				continue;
+			}
+			$json = json_decode( $body, true );
+			foreach ( self::collect_links( $json ) as $link ) {
+				if ( preg_match( $pattern, wp_parse_url( $link, PHP_URL_PATH ) ) ) {
+					$found = $link;
+					break 2;
+				}
+			}
+		}
+
+		// 2. Feed Atom "Allerte e bollettini".
+		if ( ! $found ) {
+			$body = self::http_get( self::FEED_ENDPOINT );
+			if ( ! is_wp_error( $body ) && preg_match_all( '#<link[^>]+href=["\']([^"\']+\.pdf)["\']#i', $body, $links ) ) {
+				foreach ( $links[1] as $link ) {
+					if ( preg_match( $pattern, wp_parse_url( $link, PHP_URL_PATH ) ) ) {
+						$found = html_entity_decode( $link );
+						break;
+					}
+				}
+			}
+		}
+
+		if ( $found ) {
+			if ( 0 === strpos( $found, '/' ) ) {
+				$found = untrailingslashit( self::PORTAL ) . $found;
+			}
+			$result = array( 'url' => esc_url_raw( $found ), 'pdf' => true );
+			set_transient( $key, $result, 12 * HOUR_IN_SECONDS );
+			return $result;
+		}
+		set_transient( $key, $fallback, 15 * MINUTE_IN_SECONDS );
+		return $fallback;
+	}
+
+	/** Raccoglie i valori stringa delle chiavi "link" che puntano a un PDF. */
+	private static function collect_links( $data ) {
+		$out = array();
+		if ( ! is_array( $data ) ) {
+			return $out;
+		}
+		foreach ( $data as $k => $v ) {
+			if ( is_array( $v ) ) {
+				$out = array_merge( $out, self::collect_links( $v ) );
+			} elseif ( is_string( $v ) && 'link' === strtolower( (string) $k ) && preg_match( '#\.pdf$#i', $v ) ) {
+				$out[] = $v;
+			}
+		}
+		return $out;
 	}
 
 	/** Converte l'XML CAP in array. */
@@ -338,6 +442,7 @@ final class Allerta_Meteo_ER {
 			'domani'    => 'domani',
 			'campana'   => 'mostra_campana',
 			'info'      => 'mostra_info',
+			'pdf'       => 'mostra_pdf',
 			'emissione' => 'mostra_emiss',
 			'giorno'    => 'mostra_giorno',
 			'legenda'   => 'mostra_legenda',
@@ -621,6 +726,15 @@ final class Allerta_Meteo_ER {
 					}
 					if ( $z['onset'] && $z['expires'] ) {
 						echo '<p class="amer__small">Validità del documento: dal ' . esc_html( wp_date( 'd/m/Y H:i', $z['onset'], $tz ) ) . ' al ' . esc_html( wp_date( 'd/m/Y H:i', $z['expires'], $tz ) ) . '</p>';
+					}
+					if ( $s['mostra_pdf'] ) {
+						$pdf   = self::pdf_link( $c['doc'] );
+						$label = $pdf['pdf']
+							? 'Scarica il documento ufficiale' . ( $c['doc']['identifier'] ? ' n. ' . $c['doc']['identifier'] : '' ) . ' (PDF)'
+							: 'Consulta i documenti ufficiali sul sito della Regione';
+						echo '<p class="amer__pdf"><a class="amer__pdf-link" href="' . esc_url( $pdf['url'] ) . '" target="_blank" rel="noopener">'
+							. '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path d="M4 1.5h5.5L13 5v9.5H4z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M9.5 1.5V5H13M6 9h5M6 11.5h5" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>'
+							. esc_html( $label ) . '<span class="amer__sr"> (apre una nuova scheda)</span></a></p>';
 					}
 					echo self::dialog( $uid . '-' . $c['id'], $title, ob_get_clean() ); // phpcs:ignore
 				}
@@ -938,6 +1052,7 @@ JS
 							self::f_check( $s, 'mostra_campana', 'Campana con onde' );
 							self::f_check( $s, 'onde_livello', 'Colora le onde in base al livello (gialla 2, arancione 4, rossa 6 onde)' );
 							self::f_check( $s, 'mostra_info', 'Pulsanti "Info" con le note del documento' );
+						self::f_check( $s, 'mostra_pdf', 'Nella finestra "Info", link al documento ufficiale (PDF) emesso dalla Regione' );
 							self::f_check( $s, 'mostra_emiss', 'Numero e data di emissione' );
 							self::f_check( $s, 'mostra_zona', 'Zona di allerta' );
 							self::f_check( $s, 'mostra_legenda', 'Link alla legenda delle zone' );

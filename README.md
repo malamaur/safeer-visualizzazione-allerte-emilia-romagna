@@ -18,7 +18,7 @@ Il plugin è stato sviluppato per gli enti dell'**Unione delle Terre d'Argine** 
 
 - Livello di allerta complessivo (verde, gialla, arancione, rossa) con la campana e il giorno a cui si riferisce.
 - Tabella dei fenomeni per oggi e domani: idraulico, idrogeologico, temporali, vento, neve, temperature estreme, pioggia che gela; stato del mare e mareggiate per le zone costiere.
-- Numero e data di emissione del bollettino, note in una finestra "Info", legenda delle 18 zone di allerta.
+- Numero e data di emissione del bollettino, note in una finestra "Info" con il link al documento ufficiale (PDF) della Regione, legenda delle 18 zone di allerta.
 - Facoltativo: link al portale regionale.
 
 I dati vengono dal servizio CAP (Common Alerting Protocol) `https://allertameteo.regione.emilia-romagna.it/o/xmlcap`, con cache configurabile (30 minuti di default). Se il servizio non risponde viene mostrata l'ultima copia valida con un avviso.
@@ -34,7 +34,7 @@ I dati vengono dal servizio CAP (Common Alerting Protocol) `https://allertameteo
 
 ```
 [allerta_meteo]
-[allerta_meteo zona="F1" comune="Carpi" titolo="Allerta meteo" logo="https://…/logo.png" sfondo="#1d3557" testo="#ffffff" domani="si" campana="si" info="si" emissione="si" giorno="si" legenda="si" link="si"]
+[allerta_meteo zona="F1" comune="Carpi" titolo="Allerta meteo" logo="https://…/logo.png" sfondo="#1d3557" testo="#ffffff" domani="si" campana="si" info="si" pdf="si" emissione="si" giorno="si" legenda="si" link="si"]
 ```
 
 Gli attributi omessi usano i valori delle impostazioni.

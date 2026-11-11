@@ -4,7 +4,7 @@ Tags: weather, alerts, civil protection, emilia-romagna, cap
 Requires at least: 5.8
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 2.3.1
+Stable tag: 2.3.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -23,7 +23,7 @@ The plugin reads the CAP (Common Alerting Protocol) feed published by Allerta Me
 * the level of each phenomenon: hydraulic, hydrogeological, thunderstorms, wind, snow,
   extreme temperatures, freezing rain, sea state and coastal storms (the last two only for coastal zones);
 * today and, once it has been issued, tomorrow;
-* bulletin number, issue date and the notes of each bulletin in a pop-up window;
+* bulletin number, issue date and the notes of each bulletin in a pop-up window, with a link to the official PDF document issued by the Region;
 * a legend of the 18 regional alert zones and, optionally, a link to the regional portal (off by default).
 
 Data is cached (30 minutes by default). If the regional service is unreachable, the last valid copy is shown with a notice.
@@ -50,7 +50,7 @@ Settings > SafeER Allerte, with a live preview at the top of the page:
 
 All main settings can be overridden per page:
 
-`[allerta_meteo zona="F1" comune="Carpi" titolo="Allerta meteo" logo="https://example.com/logo.png" sfondo="#1d3557" testo="#ffffff" domani="si" campana="si" info="si" emissione="si" giorno="si" legenda="si" link="si"]`
+`[allerta_meteo zona="F1" comune="Carpi" titolo="Allerta meteo" logo="https://example.com/logo.png" sfondo="#1d3557" testo="#ffffff" domani="si" campana="si" info="si" pdf="si" emissione="si" giorno="si" legenda="si" link="si"]`
 
 A classic widget, "SafeER Allerte", is also available.
 
@@ -58,8 +58,14 @@ A classic widget, "SafeER Allerte", is also available.
 
 This plugin connects to the Allerta Meteo Emilia-Romagna service, operated by the Emilia-Romagna Region
 (Agenzia per la sicurezza territoriale e la protezione civile and Arpae), to download the current alert bulletin.
-A request is sent from your server to https://allertameteo.regione.emilia-romagna.it/o/xmlcap when the cache expires;
-no personal data of your visitors is sent. Terms and privacy: https://allertameteo.regione.emilia-romagna.it/
+Requests are sent from your server, only when the cache expires, to:
+
+* https://allertameteo.regione.emilia-romagna.it/o/xmlcap (the alert bulletin in CAP format);
+* https://allertameteo.regione.emilia-romagna.it/o/get-stato-allerta and the "Allerte e bollettini" feed
+  (https://allertameteo.regione.emilia-romagna.it/o/compila-allerta-portlet/feed?feed=allerte-bollettini),
+  only to find the link to the official PDF document shown in the Info window. This can be turned off in the settings.
+
+No personal data of your visitors is sent. Terms and privacy: https://allertameteo.regione.emilia-romagna.it/
 
 If the "Titillium Web" option is enabled, the font is loaded from Google Fonts (https://fonts.google.com),
 which receives the visitor's IP address. Privacy policy: https://policies.google.com/privacy
@@ -92,6 +98,9 @@ the column shows "N.D." (not available).
 4. The settings page with the live preview.
 
 == Changelog ==
+
+= 2.3.2 =
+* The Info window now ends with a link to the official document (PDF) issued by the Region. If the PDF cannot be found, the link points to the "Allerte e bollettini" page of the regional portal. It can be turned off in the settings or with the `pdf="no"` shortcode attribute.
 
 = 2.3.1 =
 * Fix: the phenomena table was empty with the real regional bulletin. The bulletin covers two days in one document (parameters with the _1224 and _2436 suffixes): today and tomorrow are now read from the right part of the document.
