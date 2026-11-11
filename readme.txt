@@ -4,7 +4,7 @@ Tags: weather, alerts, civil protection, emilia-romagna, cap
 Requires at least: 5.8
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 2.3.0
+Stable tag: 2.3.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -92,6 +92,12 @@ the column shows "N.D." (not available).
 4. The settings page with the live preview.
 
 == Changelog ==
+
+= 2.3.1 =
+* Fix: the phenomena table was empty with the real regional bulletin. The bulletin covers two days in one document (parameters with the _1224 and _2436 suffixes): today and tomorrow are now read from the right part of the document.
+* Fix: the "tomorrow" column is filled as soon as the bulletin is issued, without a second request to the regional service.
+* The Info window of each day shows only the part of the bulletin note about that day.
+* Data cached by previous versions is ignored after the update.
 
 = 2.3.0 =
 * Plugin renamed to "SafeER Visualizzazione Allerte Emilia Romagna" to make clear it is an independent third-party plugin.

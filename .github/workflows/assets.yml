@@ -19,17 +19,19 @@ jobs:
     steps:
       # Finché la prima versione non è pubblicata (trunk vuoto) non c'è nulla da aggiornare:
       # la prima pubblicazione la fa il workflow "Deploy su WordPress.org".
-      - name: Controlla che il plugin sia già pubblicato
+      - uses: actions/checkout@v5
+      # Se il readme indica una versione non ancora pubblicata (Stable tag nuovo),
+      # readme e immagini li pubblica il workflow "Deploy su WordPress.org" con la Release.
+      - name: Controlla che la versione del readme sia già pubblicata
         id: published
         run: |
-          if curl -sfI "https://plugins.svn.wordpress.org/${SLUG}/trunk/readme.txt" > /dev/null; then
+          VERSION=$(grep -i '^Stable tag:' readme.txt | head -1 | sed 's/^[^:]*:[[:space:]]*//' | tr -d '\r[:space:]')
+          if curl -sfI "https://plugins.svn.wordpress.org/${SLUG}/tags/${VERSION}/readme.txt" > /dev/null; then
             echo "ok=true" >> "$GITHUB_OUTPUT"
           else
             echo "ok=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Plugin non ancora pubblicato su wordpress.org: aggiornamento saltato."
+            echo "::notice::La versione ${VERSION} non è ancora su wordpress.org: aggiornamento saltato, ci pensa il deploy della Release."
           fi
-      - uses: actions/checkout@v5
-        if: steps.published.outputs.ok == 'true'
       - name: Aggiorna su WordPress.org
         if: steps.published.outputs.ok == 'true'
         uses: 10up/action-wordpress-plugin-asset-update@stable

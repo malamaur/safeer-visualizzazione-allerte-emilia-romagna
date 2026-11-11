@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       SafeER Visualizzazione Allerte Emilia Romagna
  * Description:       Mostra il documento di allertamento pubblicato dalla Regione Emilia-Romagna (formato CAP) per la zona di allerta del Comune. Shortcode [allerta_meteo] e widget, grafica e parametri personalizzabili.
- * Version:           2.3.0
+ * Version:           2.3.1
  * Requires at least: 5.8
  * Requires PHP:      7.4
  * Author:            Maurizio Malagoli
@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 final class Allerta_Meteo_ER {
 
-	const VERSION  = '2.3.0';
+	const VERSION  = '2.3.1';
 	const ENDPOINT = 'https://allertameteo.regione.emilia-romagna.it/o/xmlcap';
 	const PORTAL   = 'https://allertameteo.regione.emilia-romagna.it/';
 	const CAP_NS   = 'urn:oasis:names:tc:emergency:cap:1.2';
@@ -161,6 +161,7 @@ final class Allerta_Meteo_ER {
 		$s    = self::settings();
 		$url  = self::ENDPOINT;
 		$salt = (int) get_option( 'amer_cache_salt', 1 );
+		$salt = $salt . '_' . self::VERSION; // una nuova versione non riusa la cache della precedente
 		$key  = 'amer_doc_' . $salt . '_now';
 
 		if ( $when instanceof DateTimeInterface ) {
@@ -189,7 +190,7 @@ final class Allerta_Meteo_ER {
 		if ( is_wp_error( $doc ) ) {
 			// Servizio irraggiungibile: per "adesso" riusa l'ultima copia valida.
 			$backup = get_option( 'amer_last_good' );
-			if ( null === $when && is_array( $backup ) ) {
+			if ( null === $when && is_array( $backup ) && isset( $backup['version'] ) && self::VERSION === $backup['version'] ) {
 				$backup['stale'] = true;
 				return $backup;
 			}
@@ -199,7 +200,7 @@ final class Allerta_Meteo_ER {
 
 		set_transient( $key, $doc, max( 5, (int) $s['cache'] ) * MINUTE_IN_SECONDS );
 		if ( null === $when ) {
-			update_option( 'amer_last_good', $doc, false );
+			update_option( 'amer_last_good', array_merge( $doc, array( 'version' => self::VERSION ) ), false );
 		}
 		return $doc;
 	}
@@ -227,23 +228,42 @@ final class Allerta_Meteo_ER {
 			'zones'      => array(),
 		);
 
+		$tz = new DateTimeZone( self::TZ );
 		foreach ( $alert->info as $info ) {
-			$params = array();
-			foreach ( $info->parameter as $p ) {
-				$params[ strtoupper( trim( (string) $p->valueName ) ) ] = strtoupper( trim( (string) $p->value ) );
-			}
 			$area = isset( $info->area ) ? (string) $info->area->areaDesc : '';
 			$code = strtoupper( trim( preg_replace( '/^.*-/', '', $area ) ) );
 			if ( '' === $code ) {
 				continue;
 			}
+			$onset = self::to_timestamp( (string) $info->onset );
+			$base  = $onset ? ( new DateTimeImmutable( '@' . $onset ) )->setTimezone( $tz )->setTime( 0, 0 ) : null;
+
+			/*
+			 * Il documento regionale copre più giornate: ogni fenomeno ha un suffisso con la
+			 * finestra oraria contata dalla mezzanotte del giorno di inizio validità
+			 * (es. IDRAULICO_1224 = oggi, IDRAULICO_2436 = domani).
+			 */
+			$days = array();
+			foreach ( $info->parameter as $p ) {
+				$name  = strtoupper( trim( (string) $p->valueName ) );
+				$value = strtoupper( trim( (string) $p->value ) );
+				$day   = 0;
+				if ( preg_match( '/^(.+)_(\d{2})(\d{2})$/', $name, $m ) ) {
+					$name = $m[1];
+					$day  = intdiv( (int) $m[2], 24 );
+				}
+				$key = $base ? $base->modify( '+' . $day . ' day' )->format( 'Y-m-d' ) : (string) $day;
+				$days[ $key ][ $name ] = $value;
+			}
+			ksort( $days );
+
 			$doc['zones'][ $code ] = array(
 				'event'       => strtoupper( (string) $info->event ),
 				'headline'    => trim( (string) $info->headline ),
 				'description' => trim( (string) $info->description ),
-				'onset'       => self::to_timestamp( (string) $info->onset ),
+				'onset'       => $onset,
 				'expires'     => self::to_timestamp( (string) $info->expires ),
-				'params'      => $params,
+				'days'        => $days,
 			);
 		}
 
@@ -251,6 +271,23 @@ final class Allerta_Meteo_ER {
 			return new WP_Error( 'amer_nozones', 'Il documento non contiene zone di allerta.' );
 		}
 		return $doc;
+	}
+
+	/**
+	 * Restituisce la parte della nota riferita a una giornata.
+	 * La nota regionale ha di solito un paragrafo "Per la giornata di oggi…" e uno
+	 * "Per la giornata di domani…": $index 0 = primo giorno del documento, 1 = secondo.
+	 */
+	private static function note_for_day( $note, $index ) {
+		$note = trim( (string) $note );
+		if ( '' === $note ) {
+			return '';
+		}
+		$parts = preg_split( '/(?=Per la giornata di domani)/iu', $note, 2 );
+		if ( 2 !== count( $parts ) ) {
+			return $note;
+		}
+		return trim( $parts[ $index > 0 ? 1 : 0 ] );
 	}
 
 	/** "2026-10-27T00:00+01:00[Europe/Rome]" → timestamp. */
@@ -328,35 +365,52 @@ final class Allerta_Meteo_ER {
 
 	/** Costruisce le colonne-giorno. */
 	private static function columns( array $s ) {
-		$tz   = new DateTimeZone( self::TZ );
-		$now  = new DateTimeImmutable( 'now', $tz );
-		$cols = array();
-
-		$doc  = self::get_document();
-		$zone = ( ! is_wp_error( $doc ) && isset( $doc['zones'][ $s['zona'] ] ) ) ? $doc['zones'][ $s['zona'] ] : null;
-		$cols[] = array(
-			'id'   => 'oggi',
-			'date' => $zone && $zone['onset'] ? $zone['onset'] : $now->getTimestamp(),
-			'doc'  => is_wp_error( $doc ) ? null : $doc,
-			'zone' => $zone,
-		);
-
+		$tz       = new DateTimeZone( self::TZ );
+		$now      = new DateTimeImmutable( 'now', $tz );
+		$doc      = self::get_document();
+		$doc      = is_wp_error( $doc ) ? null : $doc;
+		$wanted   = array( 'oggi' => $now );
 		if ( $s['domani'] ) {
-			$t    = $now->modify( '+1 day' )->setTime( 12, 0 );
-			$doc2 = self::get_document( $t );
-			$z2   = ( ! is_wp_error( $doc2 ) && isset( $doc2['zones'][ $s['zona'] ] ) ) ? $doc2['zones'][ $s['zona'] ] : null;
-			// Se il bollettino di domani non è ancora uscito il servizio restituisce quello di oggi.
-			if ( $z2 && wp_date( 'Y-m-d', $z2['onset'], $tz ) !== $t->format( 'Y-m-d' ) ) {
-				$z2 = null;
+			$wanted['domani'] = $now->modify( '+1 day' );
+		}
+
+		$cols = array();
+		foreach ( $wanted as $id => $day ) {
+			$key   = $day->format( 'Y-m-d' );
+			$found = self::day_in_doc( $doc, $s['zona'], $key );
+			if ( ! $found && 'domani' === $id ) {
+				// Di norma domani è già nel documento di oggi; in caso contrario provo a chiederlo.
+				$doc2  = self::get_document( $day->setTime( 12, 0 ) );
+				$found = is_wp_error( $doc2 ) ? null : self::day_in_doc( $doc2, $s['zona'], $key );
 			}
 			$cols[] = array(
-				'id'   => 'domani',
-				'date' => $t->getTimestamp(),
-				'doc'  => $z2 ? $doc2 : null,
-				'zone' => $z2,
+				'id'     => $id,
+				'date'   => $day->setTime( 12, 0 )->getTimestamp(),
+				'doc'    => $found ? $found['doc'] : null,
+				'zone'   => $found ? $found['zone'] : null,
+				'params' => $found ? $found['params'] : null,
+				'note'   => $found ? $found['note'] : '',
 			);
 		}
 		return $cols;
+	}
+
+	/** Cerca nel documento i dati della zona per una data (Y-m-d). */
+	private static function day_in_doc( $doc, $zona, $key ) {
+		if ( ! $doc || ! isset( $doc['zones'][ $zona ] ) ) {
+			return null;
+		}
+		$zone = $doc['zones'][ $zona ];
+		if ( empty( $zone['days'][ $key ] ) ) {
+			return null;
+		}
+		$index = array_search( $key, array_keys( $zone['days'] ), true );
+		return array(
+			'doc'    => $doc,
+			'zone'   => $zone,
+			'params' => $zone['days'][ $key ],
+			'note'   => self::note_for_day( $doc['note'], (int) $index ),
+		);
 	}
 
 	public static function render( array $s ) {
@@ -383,7 +437,7 @@ final class Allerta_Meteo_ER {
 			$cells = array();
 			$any   = false;
 			foreach ( $cols as $c ) {
-				$lv      = $c['zone'] ? self::level( isset( $c['zone']['params'][ $code ] ) ? $c['zone']['params'][ $code ] : '' ) : null;
+				$lv      = null !== $c['params'] ? self::level( isset( $c['params'][ $code ] ) ? $c['params'][ $code ] : '' ) : null;
 				$cells[] = $lv;
 				if ( null !== $lv && -1 !== $lv ) {
 					$any = true;
@@ -395,16 +449,19 @@ final class Allerta_Meteo_ER {
 			$rows[] = array( 'label' => $s[ 'fen_label_' . $code ] ?: $default_label, 'cells' => $cells );
 		}
 
-		// Livello complessivo: su tutti i parametri della zona (anche quelli nascosti).
+		// Livello complessivo: su tutti i fenomeni della giornata (anche quelli nascosti).
 		$overall  = -1;
 		$col_lv   = array();
 		foreach ( $cols as $i => $c ) {
-			if ( ! $c['zone'] || ( 'oggi' === $s['livello_su'] && $i > 0 ) ) {
+			if ( null === $c['params'] || ( 'oggi' === $s['livello_su'] && $i > 0 ) ) {
 				continue;
 			}
-			$lv = self::level( $c['zone']['event'] );
-			foreach ( $c['zone']['params'] as $v ) {
+			$lv = -1;
+			foreach ( $c['params'] as $v ) {
 				$lv = max( $lv, self::level( $v ) );
+			}
+			if ( -1 === $lv ) {
+				$lv = self::level( $c['zone']['event'] ); // documento senza dettaglio per fenomeno
 			}
 			$col_lv[ $i ] = $lv;
 			$overall      = max( $overall, $lv );
@@ -419,8 +476,17 @@ final class Allerta_Meteo_ER {
 		}
 		$ref_text = $ref_days ? implode( ' e ', $ref_days ) : '';
 
-		$first   = $cols[0];
-		$doc     = $first['doc'];
+		$doc = null;
+		foreach ( $cols as $c ) {
+			if ( $c['doc'] ) {
+				$doc = $c['doc'];
+				break;
+			}
+		}
+		if ( ! $doc ) {
+			$any = self::get_document();
+			$doc = is_wp_error( $any ) ? null : $any;
+		}
 		$style   = self::style_vars( $s );
 		$classes = 'amer' . ( $s['sfondo_img'] ? ' amer--img' : '' ) . ( $s['mostra_campana'] ? '' : ' amer--nobell' );
 
@@ -486,7 +552,7 @@ final class Allerta_Meteo_ER {
 										<td></td>
 										<?php foreach ( $cols as $c ) : ?>
 											<td>
-												<?php if ( $c['zone'] ) : ?>
+												<?php if ( null !== $c['params'] ) : ?>
 													<button type="button" class="amer__btn amer__btn--primary" data-amer-open="<?php echo esc_attr( $uid . '-' . $c['id'] ); ?>" aria-haspopup="dialog">Info<span class="amer__sr"> <?php echo esc_html( wp_date( 'd/m', $c['date'], $tz ) ); ?></span></button>
 												<?php endif; ?>
 											</td>
@@ -537,24 +603,24 @@ final class Allerta_Meteo_ER {
 			// Finestre modali.
 			if ( $s['mostra_info'] ) {
 				foreach ( $cols as $c ) {
-					if ( ! $c['zone'] ) {
+					if ( null === $c['params'] ) {
 						continue;
 					}
 					$z     = $c['zone'];
-					$title = $c['doc']['identifier'] ? 'Allerta meteo n. ' . $c['doc']['identifier'] : 'Allerta meteo del ' . wp_date( 'd/m', $c['date'], $tz );
+					$title = ( $c['doc']['identifier'] ? 'Allerta meteo n. ' . $c['doc']['identifier'] . ' – ' : 'Allerta meteo – ' ) . wp_date( 'l j F', $c['date'], $tz );
 					ob_start();
 					if ( $z['headline'] ) {
 						echo '<p><strong>' . esc_html( $z['headline'] ) . '</strong></p>';
 					}
 					if ( $z['description'] ) {
 						echo wp_kses_post( wpautop( $z['description'] ) );
-					} elseif ( $c['doc']['note'] ) {
-						echo wp_kses_post( wpautop( $c['doc']['note'] ) );
+					} elseif ( $c['note'] ) {
+						echo wp_kses_post( wpautop( $c['note'] ) );
 					} else {
 						echo '<p>Nessuna nota per questa giornata.</p>';
 					}
 					if ( $z['onset'] && $z['expires'] ) {
-						echo '<p class="amer__small">Validità: dal ' . esc_html( wp_date( 'd/m/Y H:i', $z['onset'], $tz ) ) . ' al ' . esc_html( wp_date( 'd/m/Y H:i', $z['expires'], $tz ) ) . '</p>';
+						echo '<p class="amer__small">Validità del documento: dal ' . esc_html( wp_date( 'd/m/Y H:i', $z['onset'], $tz ) ) . ' al ' . esc_html( wp_date( 'd/m/Y H:i', $z['expires'], $tz ) ) . '</p>';
 					}
 					echo self::dialog( $uid . '-' . $c['id'], $title, ob_get_clean() ); // phpcs:ignore
 				}
