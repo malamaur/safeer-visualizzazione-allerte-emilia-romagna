@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       SafeER Visualizzazione Allerte Emilia Romagna
  * Description:       Mostra il documento di allertamento pubblicato dalla Regione Emilia-Romagna (formato CAP) per la zona di allerta del Comune. Shortcode [allerta_meteo] e widget, grafica e parametri personalizzabili.
- * Version:           2.3.3
+ * Version:           2.3.2
  * Requires at least: 5.8
  * Requires PHP:      7.4
  * Author:            Maurizio Malagoli
@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 final class Allerta_Meteo_ER {
 
-	const VERSION  = '2.3.3';
+	const VERSION  = '2.3.2';
 	const ENDPOINT = 'https://allertameteo.regione.emilia-romagna.it/o/xmlcap';
 	const PORTAL   = 'https://allertameteo.regione.emilia-romagna.it/';
 	const BULLETINS       = 'https://allertameteo.regione.emilia-romagna.it/allerte-e-bollettini';
@@ -93,6 +93,7 @@ final class Allerta_Meteo_ER {
 			// Visualizzazione.
 			'domani'        => 1,
 			'mostra_campana'=> 1,
+			'onde_livello'  => 0,
 			'mostra_info'   => 1,
 			'mostra_emiss'  => 1,
 			'mostra_zona'   => 1,
@@ -792,8 +793,7 @@ final class Allerta_Meteo_ER {
 	private static function bell_svg( $level, array $s ) {
 		$bell_color = $level >= 0 ? 'var(--amer-l' . $level . ')' : 'var(--amer-waves)';
 		// Onde accese in base al livello (0, 2, 4, 6) se l'opzione è attiva.
-		// Onde colorate come il livello: gialla 2, arancione 4, rossa 6; verde nessuna.
-		$lit = $level > 0 ? min( 6, $level * 2 ) : 0;
+		$lit = $s['onde_livello'] && $level > 0 ? $level * 2 : 0;
 
 		$cx   = 30;
 		$cy   = 90;
@@ -1050,6 +1050,7 @@ JS
 							<?php
 							self::f_check( $s, 'domani', 'Colonna di domani (quando il documento è già emesso)' );
 							self::f_check( $s, 'mostra_campana', 'Campana con onde' );
+							self::f_check( $s, 'onde_livello', 'Colora le onde in base al livello (gialla 2, arancione 4, rossa 6 onde)' );
 							self::f_check( $s, 'mostra_info', 'Pulsanti "Info" con le note del documento' );
 						self::f_check( $s, 'mostra_pdf', 'Nella finestra "Info", link al documento ufficiale (PDF) emesso dalla Regione' );
 							self::f_check( $s, 'mostra_emiss', 'Numero e data di emissione' );

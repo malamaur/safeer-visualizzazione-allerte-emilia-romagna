@@ -4,7 +4,7 @@ Tags: weather, alerts, civil protection, emilia-romagna, cap
 Requires at least: 5.8
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 2.3.3
+Stable tag: 2.3.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -40,7 +40,7 @@ Settings > SafeER Allerte, with a live preview at the top of the page:
   borders, level label, bell waves, maximum width, optional Titillium Web font.
 * Levels: color, table label and description for each of the four levels.
 * Phenomena: which ones to show and their labels.
-* Display: tomorrow column, bell (its waves are colored according to the alert level), Info buttons, issue data, zone,
+* Display: tomorrow column, bell, waves colored by level, Info buttons, issue data, zone,
   legend, link to the regional portal, overall level computed on today only or today and tomorrow,
   indication of the day the overall level refers to.
 
@@ -98,9 +98,6 @@ the column shows "N.D." (not available).
 4. The settings page with the live preview.
 
 == Changelog ==
-
-= 2.3.3 =
-* The waves of the bell are always colored according to the alert level: 2 waves for yellow, 4 for orange, all 6 for red; grey for green. The former optional setting has been removed.
 
 = 2.3.2 =
 * The Info window now ends with a link to the official document (PDF) issued by the Region. If the PDF cannot be found, the link points to the "Allerte e bollettini" page of the regional portal. It can be turned off in the settings or with the `pdf="no"` shortcode attribute.
